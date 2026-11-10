@@ -1,0 +1,24 @@
+version: 1
+frontend:
+  phases:
+    preBuild:
+      commands:
+        - nvm use 24 || nvm install 24
+        - npm ci
+    build:
+      commands:
+        - >-
+          if [ -z "$NEXT_PUBLIC_SITE_URL" ] || [ -z "$NEXT_PUBLIC_SUPABASE_URL" ] || [ -z "${NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY:-$NEXT_PUBLIC_SUPABASE_ANON_KEY}" ] || [ -z "$NEXT_PUBLIC_GOOGLE_CLIENT_ID" ]; then
+            echo "Missing required NEXT_PUBLIC_* Amplify environment variables";
+            exit 1;
+          fi
+        - printenv | awk -F= '/^NEXT_PUBLIC_/ { print }' >> .env.production
+        - npm run build
+  artifacts:
+    baseDirectory: .next
+    files:
+      - '**/*'
+  cache:
+    paths:
+      - node_modules/**/*
+      - .next/cache/**/*

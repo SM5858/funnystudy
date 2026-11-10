@@ -1,0 +1,41 @@
+{
+  "name": "funnystudy",
+  "version": "0.1.0",
+  "private": true,
+  "engines": {
+    "node": ">=24 <25",
+    "npm": ">=11 <12"
+  },
+  "scripts": {
+    "dev": "next dev -p 3002",
+    "build": "next build --webpack",
+    "start": "next start",
+    "lint": "eslint",
+    "test:demographics": "node --test tests/demographic-routing.test.mjs",
+    "test:images": "node --test tests/caption-images.test.mjs",
+    "test:settings": "node --test tests/settings.test.mjs",
+    "preview:settings": "node tests/fixtures/settings-preview.mjs",
+    "study-email": "node --env-file=.env.local scripts/study-email.mjs",
+    "study-sms": "node --env-file=.env.local scripts/study-sms.mjs",
+    "study-voice": "node --env-file=.env.local scripts/study-voice.mjs",
+    "supabase:types": "supabase login && supabase gen types typescript --project-id qihsgnfjqmkjmoowyfbn --schema public > src/types/supabase.ts"
+  },
+  "dependencies": {
+    "@heroicons/react": "^2.2.0",
+    "@supabase/ssr": "^0.8.0",
+    "@supabase/supabase-js": "^2.86.2",
+    "next": "^16.1.1",
+    "react": "^19.2.3",
+    "react-dom": "^19.2.3"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4",
+    "@types/node": "^24",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "^16.1.1",
+    "tailwindcss": "^4",
+    "typescript": "^5"
+  }
+}
