@@ -11,6 +11,7 @@ import {
 } from "./CaptionVoteFlow";
 
 export function CaptionVoteSection({
+  captionNumberOffset = 0,
   captionOrder,
   captions,
   includePrivateStudies,
@@ -19,9 +20,11 @@ export function CaptionVoteSection({
   initialParticipation,
   participationLoadError = false,
   loadError,
+  remainingCaptionCount,
   reservedTopPx = 0,
   studyId,
 }: {
+  captionNumberOffset?: number;
   captionOrder: string[];
   captions: CaptionForVote[];
   includePrivateStudies?: boolean;
@@ -30,14 +33,31 @@ export function CaptionVoteSection({
   initialParticipation: StudyParticipation | null;
   participationLoadError?: boolean;
   loadError: boolean;
+  remainingCaptionCount?: number;
   reservedTopPx?: number;
   studyId?: number | null;
 }) {
   const [isCompactHeight, setIsCompactHeight] = useState(false);
   // Server-action revalidation must not replace an active run with the revisit
   // screen or reset its caption queue. A new route entry gets a fresh snapshot.
-  const [entry] = useState({ captionOrder, captions, initialParticipation, initialNextOffset, initialTotalCaptionCount });
+  const [entry] = useState({
+    captionNumberOffset,
+    captionOrder,
+    captions,
+    initialParticipation,
+    initialNextOffset,
+    initialTotalCaptionCount,
+    remainingCaptionCount: remainingCaptionCount ?? captionOrder.length,
+  });
   const hasCaptions = entry.captions.length > 0;
+  // A returning participant who has already seen every caption has nothing
+  // left to scroll, but still has to End Study to save it. That is the flow's
+  // final step, not the "nothing here" state.
+  const hasSeenEveryCaption =
+    !hasCaptions &&
+    entry.initialTotalCaptionCount > 0 &&
+    entry.remainingCaptionCount === 0 &&
+    Boolean(entry.initialParticipation?.started_at);
   const showLoadErrorBanner = loadError && hasCaptions;
   const showLoadErrorState = loadError && !hasCaptions;
 
@@ -93,7 +113,7 @@ export function CaptionVoteSection({
               state because the caption query failed.
             </p>
           </div>
-        ) : !hasCaptions ? (
+        ) : !hasCaptions && !hasSeenEveryCaption ? (
           <div
             id="no-study-captions-state"
             className="glass-panel w-full max-w-xl rounded-2xl border border-[var(--panel-border)] bg-[var(--vote-panel-surface)] p-6 text-center text-[var(--foreground)] shadow-[var(--vote-panel-shadow)] sm:p-8"
@@ -113,12 +133,14 @@ export function CaptionVoteSection({
           </div>
         ) : (
           <CaptionVoteFlow
+            captionNumberOffset={entry.captionNumberOffset}
             captionOrder={entry.captionOrder}
             captions={entry.captions}
             includePrivateStudies={includePrivateStudies}
             initialNextOffset={entry.initialNextOffset}
             initialTotalCaptionCount={entry.initialTotalCaptionCount}
             initialParticipation={entry.initialParticipation}
+            remainingCaptionCount={entry.remainingCaptionCount}
             reservedTopPx={reservedTopPx}
             studyId={studyId}
           />

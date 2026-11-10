@@ -16,6 +16,7 @@ import {
 } from "@/lib/studies";
 import { createClient } from "@/lib/supabase/server";
 import { fetchStudyParticipations, isStudyCompleted } from "@/lib/study-participation";
+import { fetchStudyProgress } from "@/lib/study-progress";
 
 type PageParams = Promise<{
   studyId: string;
@@ -114,19 +115,49 @@ export default async function NumericStudyPage({
     .join(" ")
     .trim();
   const displayName = fullName || user.email || "your account";
-  const skipCaptions = Boolean(participationError) || isStudyCompleted(participation);
+  // Where this participant left off, across every earlier sitting. This has to
+  // resolve before captions load: the captions they have already seen are the
+  // ones this run leaves out.
+  const progressResult =
+    Boolean(participationError) || isStudyCompleted(participation)
+      ? null
+      : await fetchStudyProgress(supabase, user.id, {
+          includePrivateStudies: true,
+          now: studyNow,
+          studyId: studyResult.study.id,
+        });
+
+  if (progressResult?.error) {
+    console.error("[NumericStudyPage] load study progress failed", progressResult.error);
+  }
+
+  const progress = progressResult?.progress ?? null;
+  const progressError = Boolean(progressResult?.error);
+  const skipCaptions =
+    Boolean(participationError) || progressError || isStudyCompleted(participation);
   const {
     captionOrder,
     captions: initialCaptions,
     error: activeStudyError,
     nextOffset,
+    totalCaptionCount,
   } = skipCaptions
-    ? { captionOrder: [], captions: [], error: null, nextOffset: null }
+    ? {
+        captionOrder: [],
+        captions: [],
+        error: null,
+        nextOffset: null,
+        totalCaptionCount: 0,
+      }
     : await fetchInitialActiveStudyCaptions(supabase, user.id, {
+        excludeCaptionIds: progressResult?.seenCaptionIds,
         includePrivateStudies: true,
         now: studyNow,
         studyId: studyResult.study.id,
       });
+  const studyCaptionCount = Math.max(progress?.totalCount ?? 0, totalCaptionCount);
+  const seenCaptionCount = Math.min(progress?.seenCount ?? 0, studyCaptionCount);
+  const remainingCaptionCount = Math.max(0, studyCaptionCount - seenCaptionCount);
 
   const captionsForVote: CaptionForVote[] = initialCaptions.map((caption) => ({
     id: caption.id,
@@ -154,14 +185,16 @@ export default async function NumericStudyPage({
       >
         <CaptionVoteSection
           key={`${user.id}:${studyResult.study.id}`}
+          captionNumberOffset={seenCaptionCount}
           captionOrder={captionOrder}
           captions={captionsForVote}
           includePrivateStudies
           initialNextOffset={nextOffset}
-          initialTotalCaptionCount={captionOrder.length}
+          initialTotalCaptionCount={studyCaptionCount}
           loadError={!!activeStudyError}
           initialParticipation={participation}
-          participationLoadError={!!participationError}
+          participationLoadError={!!participationError || progressError}
+          remainingCaptionCount={remainingCaptionCount}
           reservedTopPx={56}
           studyId={studyResult.study.id}
         />

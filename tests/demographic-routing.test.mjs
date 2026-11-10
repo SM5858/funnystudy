@@ -190,7 +190,10 @@ test("randomized batch loading stays scoped and keeps its snapshot when mappings
 
 test("empty and small shuffled studies terminate, and load failures remain errors", async (t) => {
   const empty = await createCaptionScenario(0).initial();
-  assert.deepEqual(empty, { captionOrder: [], captions: [], error: null, nextOffset: null });
+  assert.deepEqual(empty, {
+    captionOrder: [], captions: [], error: null,
+    excludedCaptionCount: 0, nextOffset: null, totalCaptionCount: 0,
+  });
   const small = await createCaptionScenario(3).initial();
   assert.equal(small.captions.length, 3);
   assert.equal(small.nextOffset, null);
@@ -237,6 +240,10 @@ function createScenario({
   const rows = {
     studies,
     study_participations: participations,
+    study_caption_mappings: [],
+    study_caption_navigation_events: [],
+    study_caption_vote_events: [],
+    caption_votes: [],
     profiles: [{ id: profileId, first_name: "Test", last_name: "Participant", is_superadmin: false, notify_new_study_email: false, notify_new_study_sms: false, notify_new_study_phone_call: false, ...notificationPreferences }],
     demographic_questions: [{ id: 1, question: "First question" }, { id: 2, question: "Second question" }],
     demographic_answers: [{ id: 1, answer: "First answer" }, { id: 2, answer: "Second answer" }],
@@ -277,6 +284,9 @@ function createScenario({
       const query = {
         select: () => query,
         in: (key, values) => { filters.push((row) => values.includes(row[key])); return query; },
+        is: (key, value) => { filters.push((row) => (row[key] ?? null) === value); return query; },
+        gt: (key, value) => { filters.push((row) => row[key] > value); return query; },
+        range: () => query,
         eq: (key, value) => {
           filterKeys.add(key);
           filters.push((row) => row[key] === value);
@@ -326,6 +336,7 @@ function createScenario({
       return { captionOrder: [], captions: [], error: null, nextOffset: null };
     },
   };
+  imports["@/lib/study-progress"] = loadModule("src/lib/study-progress.ts", imports);
   imports["@/lib/notification-preferences"] = loadModule("src/lib/notification-preferences.ts", imports);
   const demographics = loadModule("src/lib/demographics.ts", imports);
   imports["@/lib/demographics"] = demographics;
@@ -616,6 +627,10 @@ test("study participation actions authenticate, validate, propagate failures, an
   const participation = { profile_id: profileId, study_id: 1, started_at: "2026-10-01T12:00:00Z", ended_at: null };
   const actions = loadModule("src/app/study/actions.ts", {
     "@/lib/study-stats": statsModule,
+    // No captions in scope, so the stats this run saves are the ones it was
+    // given; widening them across sittings has its own regression test.
+    "@/lib/studies": { fetchActiveStudyCaptionIdentities: async () => ({ identities: [], error: null }) },
+    "@/lib/study-progress": {},
     "next/cache": { revalidatePath: (path) => revalidated.push(path) },
     "@/lib/supabase/server": { createClient: async () => ({
       auth: { getUser: async () => ({ data: { user: signedIn ? { id: profileId } : null } }) },

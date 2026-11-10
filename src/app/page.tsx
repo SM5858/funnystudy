@@ -13,6 +13,12 @@ import { buildNotificationPreferencesPath, fetchNotificationPreferences, NOTIFIC
 import { fetchPublicActiveStudyIdentities } from "@/lib/studies";
 import { createClient } from "@/lib/supabase/server";
 import { fetchStudyParticipations, isStudyCompleted } from "@/lib/study-participation";
+import {
+  fetchStudyProgress,
+  formatStudyProgressLabel,
+  studyProgressPercent,
+  type StudyProgress,
+} from "@/lib/study-progress";
 import type { TablesUpdate } from "@/types/supabase";
 
 type Profile = {
@@ -100,6 +106,35 @@ export default async function Home({
     console.error("[Home] load study participation failed", participationError);
   }
 
+  // How far along each unfinished study is, so a participant can see what is
+  // left before opening it. Finished studies already say Completed, and a
+  // study never started has nothing to report, so neither is looked up.
+  const unfinishedStudyIds = activeStudyIdentities
+    .map((study) => study.id)
+    .filter((studyId) => {
+      const participation = participationByStudy.get(studyId);
+      return Boolean(participation?.started_at) && !participation?.ended_at;
+    });
+  const progressByStudy = new Map<number, StudyProgress>(
+    (
+      await Promise.all(
+        unfinishedStudyIds.map(async (studyId) => {
+          const { error, progress } = await fetchStudyProgress(supabase, user.id, {
+            now: studyNow,
+            studyId,
+          });
+
+          if (error) {
+            console.error("[Home] load study progress failed", error);
+            return null;
+          }
+
+          return [studyId, progress] as const;
+        })
+      )
+    ).filter((entry): entry is readonly [number, StudyProgress] => entry !== null)
+  );
+
   return (
     <div
       id="home-root"
@@ -136,7 +171,13 @@ export default async function Home({
               </p>
             ) : null}
             <ul className="space-y-3">
-              {activeStudyIdentities.map((study) => (
+              {activeStudyIdentities.map((study) => {
+                const progress = progressByStudy.get(study.id) ?? null;
+                const hasProgressToShow = Boolean(progress && progress.totalCount > 0);
+                const hasSeenEveryCaption = Boolean(
+                  progress && progress.totalCount > 0 && progress.remainingCount === 0
+                );
+                return (
                 <li key={study.id}>
                   <Link
                     href={`/study/${study.id}`}
@@ -152,10 +193,30 @@ export default async function Home({
                           <span className="rounded-full bg-[var(--accent)] px-3 py-1 text-xs font-semibold text-[var(--accent-contrast)]">
                             Completed
                           </span>
+                        ) : hasSeenEveryCaption ? (
+                          <span className="text-xs font-semibold text-[var(--accent-strong)]">
+                            All captions seen — finish to save it
+                          </span>
                         ) : participationByStudy.get(study.id)?.started_at ? (
                           <span className="text-xs font-semibold text-[var(--muted)]">In progress</span>
                         ) : null}
                       </div>
+                      {hasProgressToShow && progress ? (
+                        <div className="space-y-1.5">
+                          <p className="text-xs font-semibold text-[var(--muted)]">
+                            {formatStudyProgressLabel(progress)}
+                          </p>
+                          <div
+                            aria-hidden
+                            className="h-1.5 w-full overflow-hidden rounded-full bg-[var(--surface-muted)]"
+                          >
+                            <div
+                              className="h-full rounded-full bg-[var(--accent)]"
+                              style={{ width: `${studyProgressPercent(progress)}%` }}
+                            />
+                          </div>
+                        </div>
+                      ) : null}
                       <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 text-sm leading-6 text-[var(--muted)]">
                         <dt>Start</dt>
                         <dd>
@@ -177,7 +238,8 @@ export default async function Home({
                     />
                   </Link>
                 </li>
-              ))}
+                );
+              })}
             </ul>
           </>
         )}

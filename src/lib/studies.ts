@@ -35,6 +35,11 @@ type CaptionIdRow = {
   caption_id: string;
 };
 
+export type StudyCaptionIdentity = {
+  captionId: string;
+  mappingId: number | null;
+};
+
 type CaptionSaveRow = {
   caption_id: string;
 };
@@ -219,15 +224,23 @@ export async function fetchActiveStudyCaptionTotalCount(
   };
 }
 
-export async function fetchActiveStudyCaptionIds(
+/**
+ * Every caption in scope, paired with the mapping row that put it there. The
+ * mapping id is what scopes a participant's recorded events to this study, so
+ * progress lookups need it alongside the caption id.
+ */
+export async function fetchActiveStudyCaptionIdentities(
   supabase: SupabaseClient,
   now = new Date(),
   scope: StudyCaptionScope = {}
-): Promise<{ ids: string[]; error: PostgrestError | null }> {
+): Promise<{
+  identities: StudyCaptionIdentity[];
+  error: PostgrestError | null;
+}> {
   const PAGE_SIZE = 1000;
   const nowIso = now.toISOString();
   const normalizedStudyId = normalizeStudyId(scope.studyId);
-  const ids = new Set<string>();
+  const mappingIdByCaptionId = new Map<string, number | null>();
   let from = 0;
   let error: PostgrestError | null = null;
 
@@ -261,8 +274,16 @@ export async function fetchActiveStudyCaptionIds(
 
     const rows = (data ?? []) as StudyCaptionMappingRow[];
     rows.forEach((row) => {
-      if (typeof row.caption_id === "string" && row.caption_id.length > 0) {
-        ids.add(row.caption_id);
+      if (typeof row.caption_id !== "string" || row.caption_id.length === 0) {
+        return;
+      }
+
+      // A caption mapped twice stays one caption, keeping the first mapping.
+      if (!mappingIdByCaptionId.has(row.caption_id)) {
+        mappingIdByCaptionId.set(
+          row.caption_id,
+          typeof row.id === "number" ? row.id : null
+        );
       }
     });
 
@@ -273,7 +294,27 @@ export async function fetchActiveStudyCaptionIds(
     from += PAGE_SIZE;
   }
 
-  return { ids: Array.from(ids), error };
+  return {
+    identities: Array.from(mappingIdByCaptionId, ([captionId, mappingId]) => ({
+      captionId,
+      mappingId,
+    })),
+    error,
+  };
+}
+
+export async function fetchActiveStudyCaptionIds(
+  supabase: SupabaseClient,
+  now = new Date(),
+  scope: StudyCaptionScope = {}
+): Promise<{ ids: string[]; error: PostgrestError | null }> {
+  const { identities, error } = await fetchActiveStudyCaptionIdentities(
+    supabase,
+    now,
+    scope
+  );
+
+  return { ids: identities.map((identity) => identity.captionId), error };
 }
 
 export async function fetchActiveStudyCaptions(
@@ -460,11 +501,13 @@ export async function fetchInitialActiveStudyCaptions(
   supabase: SupabaseClient,
   profileId: string,
   {
+    excludeCaptionIds,
     includePrivateStudies = false,
     minimumCount = INITIAL_ACTIVE_STUDY_CAPTION_COUNT,
     now = new Date(),
     studyId = null,
   }: {
+    excludeCaptionIds?: ReadonlySet<string> | readonly string[];
     includePrivateStudies?: boolean;
     minimumCount?: number;
     now?: Date;
@@ -474,7 +517,9 @@ export async function fetchInitialActiveStudyCaptions(
   captionOrder: string[];
   captions: ViewerActiveStudyCaption[];
   error: PostgrestError | null;
+  excludedCaptionCount: number;
   nextOffset: number | null;
+  totalCaptionCount: number;
 }> {
   const normalizedMinimumCount =
     Number.isSafeInteger(minimumCount) && minimumCount > 0
@@ -485,12 +530,31 @@ export async function fetchInitialActiveStudyCaptions(
     studyId,
   });
   if (error) {
-    return { captionOrder: [], captions: [], error, nextOffset: null };
+    return {
+      captionOrder: [],
+      captions: [],
+      error,
+      excludedCaptionCount: 0,
+      nextOffset: null,
+      totalCaptionCount: 0,
+    };
   }
 
-  // Shuffle the entire lightweight ID list once, before fetching any content.
-  // Later batches use this snapshot even if mappings change during the run.
-  const captionOrder = shuffleStudyCaptionIds(ids);
+  // Captions this participant has already seen are left out of the run, so
+  // Continue really continues instead of dealing the whole study again.
+  const excluded =
+    excludeCaptionIds instanceof Set
+      ? excludeCaptionIds
+      : new Set(excludeCaptionIds ?? []);
+  const remainingIds = excluded.size
+    ? ids.filter((id) => !excluded.has(id))
+    : ids;
+  const totalCaptionCount = ids.length;
+  const excludedCaptionCount = totalCaptionCount - remainingIds.length;
+
+  // Shuffle the remaining lightweight ID list once, before fetching any
+  // content. Later batches use this snapshot even if mappings change mid-run.
+  const captionOrder = shuffleStudyCaptionIds(remainingIds);
   const captions: ViewerActiveStudyCaption[] = [];
   let nextOffset: number | null = captionOrder.length ? 0 : null;
 
@@ -511,7 +575,9 @@ export async function fetchInitialActiveStudyCaptions(
         captionOrder: [],
         captions: [],
         error: page.error,
+        excludedCaptionCount: 0,
         nextOffset: null,
+        totalCaptionCount: 0,
       };
     }
 
@@ -524,6 +590,8 @@ export async function fetchInitialActiveStudyCaptions(
     captionOrder,
     captions,
     error: null,
+    excludedCaptionCount,
     nextOffset,
+    totalCaptionCount,
   };
 }

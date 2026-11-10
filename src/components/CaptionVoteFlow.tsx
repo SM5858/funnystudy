@@ -15,7 +15,11 @@ import { endStudy, startStudy } from "@/app/study/actions";
 import type { StudyParticipation } from "@/lib/study-participation";
 import type { StudyStats } from "@/lib/study-stats";
 import { CompletedStudy } from "@/components/CompletedStudy";
-import { STUDY_CAPTION_BATCH_SIZE } from "@/lib/study-caption-order";
+import {
+  captionProgressPosition,
+  formatCaptionProgressLabel,
+  STUDY_CAPTION_BATCH_SIZE,
+} from "@/lib/study-caption-order";
 
 import {
   loadMoreCaptionVoteCaptions,
@@ -374,22 +378,26 @@ function shouldIgnoreTouchNavigationTarget(target: EventTarget | null) {
 }
 
 export function CaptionVoteFlow({
+  captionNumberOffset = 0,
   captionOrder,
   captions,
   includePrivateStudies,
   initialNextOffset,
   initialTotalCaptionCount,
   initialParticipation,
+  remainingCaptionCount,
   reservedTopPx = 0,
   studyId,
   onPendingChange,
 }: {
+  captionNumberOffset?: number;
   captionOrder: string[];
   captions: CaptionForVote[];
   includePrivateStudies?: boolean;
   initialNextOffset: number | null;
   initialTotalCaptionCount: number;
   initialParticipation: StudyParticipation | null;
+  remainingCaptionCount?: number;
   reservedTopPx?: number;
   studyId?: number | null;
   onPendingChange?: (count: number) => void;
@@ -569,15 +577,26 @@ export function CaptionVoteFlow({
     !isStartPageVisible &&
     !shouldShowInlineCaptionActions &&
     !isShowingCompletionPage;
-  const totalCaptionCount = Math.max(initialTotalCaptionCount, queue.length);
-  const currentCaptionNumber =
-    current && totalCaptionCount > 0
-      ? Math.min(totalCaptionCount, currentIndex + 1)
-      : null;
+  // Captions already seen in earlier sittings are not in this run's queue, so
+  // the readout counts from where the participant actually is in the study.
+  const seenBeforeThisRun = Math.max(0, captionNumberOffset);
+  const captionPosition = captionProgressPosition({
+    currentIndex,
+    queueLength: queue.length,
+    seenBeforeThisRun,
+    totalCaptionCount: initialTotalCaptionCount,
+  });
+  const totalCaptionCount = captionPosition.total;
   const captionProgressLabel =
-    currentCaptionNumber && totalCaptionCount > 0
-      ? `${currentCaptionNumber.toLocaleString("en-US")}/${totalCaptionCount.toLocaleString("en-US")}`
+    current && totalCaptionCount > 0
+      ? formatCaptionProgressLabel(captionPosition)
       : null;
+  const remainingCount = Math.max(
+    0,
+    typeof remainingCaptionCount === "number"
+      ? remainingCaptionCount
+      : totalCaptionCount - seenBeforeThisRun
+  );
   const shouldShowCaptionProgress =
     Boolean(captionProgressLabel) &&
     !isStartPageVisible &&
@@ -1566,7 +1585,13 @@ export function CaptionVoteFlow({
       {participation?.ended_at ? (
         <CompletedStudy participation={participation} />
       ) : isStartPageVisible ? (
-        <StudyStartPage onStart={handleStartStudy} pending={participationPending} hasStarted={Boolean(participation?.started_at)} />
+        <StudyStartPage
+          onStart={handleStartStudy}
+          pending={participationPending}
+          hasStarted={Boolean(participation?.started_at)}
+          remainingCount={remainingCount}
+          resumeCaptionNumber={seenBeforeThisRun > 0 ? seenBeforeThisRun + 1 : null}
+        />
       ) : isShowingCompletionPage ? (
         <StudyEndPage
           pendingCount={pendingCount}
@@ -1625,11 +1650,32 @@ export function CaptionVoteFlow({
   );
 }
 
-function StudyStartPage({ onStart, pending, hasStarted }: {
+function StudyStartPage({
+  onStart,
+  pending,
+  hasStarted,
+  remainingCount,
+  resumeCaptionNumber,
+}: {
   onStart: () => void;
   pending: boolean;
   hasStarted: boolean;
+  remainingCount: number;
+  resumeCaptionNumber: number | null;
 }) {
+  // A returning participant does not need the instructions again; they need to
+  // know the study remembers them and how much is left. The button names the
+  // caption it will open, because a button called Continue that restarts from
+  // the beginning is what taught participants not to trust it.
+  const isResuming = hasStarted && resumeCaptionNumber !== null;
+  const startLabel = pending
+    ? "Starting…"
+    : isResuming
+      ? `Continue from caption ${resumeCaptionNumber.toLocaleString("en-US")}`
+      : hasStarted
+        ? "Continue Study"
+        : "Start Study";
+
   return (
     <div className="flex min-h-0 w-full max-w-xl flex-1 items-center sm:max-w-2xl">
       <div data-native-scroll-region="true" className="glass-panel relative max-h-full w-full overflow-y-auto overscroll-contain rounded-[28px] border border-[var(--panel-border)] bg-[var(--vote-panel-surface)] p-6 text-left text-[var(--foreground)] shadow-[var(--vote-panel-shadow)] sm:p-8">
@@ -1648,19 +1694,33 @@ function StudyStartPage({ onStart, pending, hasStarted }: {
               </span>
             </span>
           </h1>
-          <p className="text-base leading-8 text-[var(--foreground)]/92 sm:text-lg">
-            Like the captions you find funny.
-          </p>
-          <p className="text-base leading-8 text-[var(--foreground)]/92 sm:text-lg">
-            That&apos;s it. That&apos;s all you have to do.
-          </p>
-          <p className="text-base leading-8 text-[var(--foreground)]/92 sm:text-lg">
-            Scroll through all the captions, then choose End Study on the
-            final page to save your completion and see your humor stats.
-          </p>
+          {isResuming ? (
+            <p
+              id="study-welcome-back"
+              className="text-base leading-8 text-[var(--foreground)]/92 sm:text-lg"
+            >
+              Welcome back.{" "}
+              {remainingCount === 1
+                ? "1 caption left."
+                : `${remainingCount.toLocaleString("en-US")} captions left.`}
+            </p>
+          ) : (
+            <>
+              <p className="text-base leading-8 text-[var(--foreground)]/92 sm:text-lg">
+                Like the captions you find funny.
+              </p>
+              <p className="text-base leading-8 text-[var(--foreground)]/92 sm:text-lg">
+                That&apos;s it. That&apos;s all you have to do.
+              </p>
+              <p className="text-base leading-8 text-[var(--foreground)]/92 sm:text-lg">
+                Scroll through all the captions, then choose End Study on the
+                final page to save your completion and see your humor stats.
+              </p>
+            </>
+          )}
           <button type="button" onClick={onStart} disabled={pending}
             className="mt-2 rounded-xl bg-[var(--accent)] px-5 py-3 text-base font-semibold text-[var(--accent-contrast)] disabled:cursor-wait disabled:opacity-60">
-            {pending ? "Starting…" : hasStarted ? "Continue Study" : "Start Study"}
+            {startLabel}
           </button>
         </div>
       </div>

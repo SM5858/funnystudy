@@ -21,13 +21,28 @@ export function CompletedStudy({ participation }: { participation: StudyParticip
           <h1 className="mt-3 text-3xl font-black uppercase tracking-[0.06em] text-[var(--foreground)] sm:text-4xl">Study Stats</h1>
           <p className="mt-3 text-sm leading-6 text-[var(--soft)] sm:text-base">Thank you for participating!</p>
           {stats ? (
-            <div className="mt-6 grid gap-3 sm:grid-cols-2">
-              <StatCard label="Median time before like" value={formatMilliseconds(stats.medianVoteTimeMs)} />
-              <StatCard label="Median time before next caption" value={formatMilliseconds(stats.medianNavigationTimeMs)} />
-              <StatCard label="Upvote percentage" value={`${percentage}%`} />
-              <StatCard label="Captions liked" value={stats.likedCount.toLocaleString("en-US")} />
-              <StatCard label="Captions viewed" value={stats.viewedCount.toLocaleString("en-US")} />
-            </div>
+            <>
+              {/* The counts cover the whole study, not the last sitting, so the
+                  screen says so instead of leaving the reader to guess. */}
+              {typeof stats.sessionCount === "number" && stats.sessionCount > 0 ? (
+                <p id="completion-session-scope" className="mt-2 text-sm font-semibold leading-6 text-[var(--foreground)]">
+                  {stats.sessionCount === 1
+                    ? "Across 1 session"
+                    : `Across ${stats.sessionCount.toLocaleString("en-US")} sessions`}
+                </p>
+              ) : null}
+              <div className="mt-6 grid gap-3 sm:grid-cols-2">
+                <StatCard label="Median time before like" value={formatMilliseconds(stats.medianVoteTimeMs)} />
+                <StatCard label="Median time before next caption" value={formatMilliseconds(stats.medianNavigationTimeMs)} />
+                <StatCard label="Upvote percentage" value={`${percentage}%`} />
+                <StatCard label="Captions liked" value={stats.likedCount.toLocaleString("en-US")} />
+                <StatCard label="Captions seen" value={stats.viewedCount.toLocaleString("en-US")} />
+              </div>
+              <p className="mt-4 text-xs leading-5 text-[var(--muted)]">
+                Times are measured only while a caption is on your screen, so
+                breaks between sessions are not counted.
+              </p>
+            </>
           ) : (
             <p role="status" className="mt-6 text-sm text-[var(--muted)]">Stats weren&apos;t saved for this completed study.</p>
           )}

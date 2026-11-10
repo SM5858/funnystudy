@@ -13,6 +13,7 @@
     "lint": "eslint",
     "test:demographics": "node --test tests/demographic-routing.test.mjs",
     "test:images": "node --test tests/caption-images.test.mjs",
+    "test:resume": "node --test tests/study-resume.test.mjs",
     "test:settings": "node --test tests/settings.test.mjs",
     "preview:settings": "node tests/fixtures/settings-preview.mjs",
     "study-email": "node --env-file=.env.local scripts/study-email.mjs",
