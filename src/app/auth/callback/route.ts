@@ -59,6 +59,14 @@ export async function GET(request: Request) {
     const { error } = await supabase.auth.exchangeCodeForSession(code);
 
     if (error) {
+      // The participant only sees "please try again", so the reason has to
+      // reach the server log; a failed exchange is otherwise undiagnosable.
+      console.error("[auth/callback] exchange code for session failed", {
+        message: error.message,
+        name: error.name,
+        status: error.status,
+        redirectOrigin,
+      });
       const redirectUrl = new URL("/login", redirectOrigin);
       redirectUrl.searchParams.set(
         "message",

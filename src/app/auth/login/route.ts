@@ -44,6 +44,12 @@ export async function POST(request: Request) {
   });
 
   if (error || !data?.url) {
+    console.error("[auth/login] start Google sign-in failed", {
+      message: error?.message,
+      status: error?.status,
+      hasUrl: Boolean(data?.url),
+      redirectTo: redirectTo.toString(),
+    });
     return NextResponse.redirect(
       `${origin}/login?message=` +
         encodeURIComponent("Unable to sign in right now. Please try again."),
