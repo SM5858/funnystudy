@@ -1,9 +1,18 @@
 # Semester Project Part 4 — Iteration 3: Refine and complete the upgrade
 
 **Application:** Crackd / The Humor Study (Next.js + Supabase)
-**Deployed application (Vercel):** `<PASTE YOUR VERCEL URL HERE>`
-**Sign-in:** Google OAuth. Any Google account works; the reviewer is taken through
-notification and demographic questions once, then lands on the study list.
+**Deployed application (Vercel):** https://funnystudy-beta.vercel.app
+
+**Sign-in:** Google OAuth. Any Google account works; you are taken through the
+notification and demographic questions once, then land on the study list.
+
+**How to see the upgrade:** open the study, like a few captions, then **leave
+without ending the study** — close the tab or go back to the study list. Come
+back to the same study. That return trip is the whole feature: the card on the
+list shows how far you got, the start page shows it again and says the captions
+you have already seen will not come back, and the button names the caption it
+will open. Inside the study, the bar at the bottom shows your position and
+carries the `Back` and `Next` buttons.
 
 ---
 
@@ -135,11 +144,20 @@ header says *"Each study picks up where you left off."*
   **dark and light mode at 375×812 phone size**. The start page fits on a phone
   with the `Continue` button above the fold, and the navigator reads clearly in
   both themes.
-- Not yet checked: the running app against a live database on the deployed site.
-  The project commandment against overlapping UI was respected by increasing the
-  bottom space the study reserves for the bar (34 px → 76 px), so the caption and
-  image shrink above it rather than being covered — this is worth one look on the
-  deployed site before the demo.
+- **On the deployed site** (`funnystudy-beta.vercel.app`, signed in): the study
+  list renders the new header and the `View stats` action, and a completed study
+  opens its saved stats. The deployed CSS carries this iteration's tokens, so the
+  running site is this build and not an older one.
+- **The bottom bar cannot overlap the caption.** Measured on the real component
+  at 375 px: the bar is 54 px tall and sits 12 px above the bottom edge, so it
+  occupies 66 px, while the study now reserves 76 px for it (up from 34 px) plus
+  a 24 px base inset. The caption and image shrink above it rather than being
+  covered. Both buttons measure 40 × 80 px, comfortably above the minimum target
+  size.
+- Still unchecked: the bar sitting against a real caption image on the deployed
+  site. The only study on the account used for testing is already completed, so
+  it opens its stats rather than captions. A reviewer signing in with a fresh
+  account sees the full caption flow.
 
 ---
 
@@ -151,9 +169,10 @@ header says *"Each study picks up where you left off."*
    as on-screen buttons makes the study feel slower or more deliberate than the
    swipe-only version, since the gesture is still there and the buttons are an
    addition rather than a replacement.
-2. **Verify on the deployed site with a real account**, specifically that the
-   taller bottom bar never covers a caption image on a short phone, and that the
-   live region announces at a sensible pace when moving quickly.
+2. **Watch the bar against real caption images on a short phone**, and check
+   that the live region announces at a sensible pace when moving quickly. The
+   geometry is measured and safe; what is unverified is how it feels over a
+   full-bleed cartoon.
 3. **Apply the `study_caption_navigation_events` / `study_caption_vote_events`
    read migration to staging and production.** Resume depends on the participant
    being able to read back their own events; the migration exists in the
