@@ -448,7 +448,11 @@ export function SwipeVoteCard({
                   src={displaySrc}
                   srcSet={displaySrcSet}
                   sizes={displaySizes}
-                  alt="Caption related"
+                  // "Caption related" told a screen reader nothing. The
+                  // cartoon is the joke the caption above belongs to, and we
+                  // have no description of it, so the alt text says what the
+                  // image is rather than pretending to describe it.
+                  alt="Cartoon for the caption above"
                   fetchPriority="high"
                   loading="eager"
                   className={`absolute inset-0 h-full w-full object-contain transition-opacity duration-300 ${

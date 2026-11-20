@@ -330,7 +330,16 @@ test("the counter opens at the participant's real position instead of 1", () => 
     totalCaptionCount: 13,
   });
   assert.deepEqual(resumed, { position: 7, total: 13 });
-  assert.equal(captionOrderModule.formatCaptionProgressLabel(resumed), "7/13");
+  assert.equal(captionOrderModule.formatCaptionProgressLabel(resumed), "7 of 13");
+  assert.equal(
+    captionOrderModule.formatCaptionProgressAnnouncement(resumed),
+    "Caption 7 of 13"
+  );
+  assert.equal(captionOrderModule.captionProgressPercent(resumed), 54);
+  assert.equal(
+    captionOrderModule.captionProgressPercent({ position: 0, total: 0 }),
+    0
+  );
 
   // The same values a first render has, so there is no 1-of-13 flash to fix.
   assert.deepEqual(
@@ -471,20 +480,30 @@ test("the start page welcomes a returning participant back and names the caption
 test("home shows how far each unfinished study got, and flags one with nothing left", async () => {
   const partway = createStudyScenario({ navigated: [1, 2, 3, 4, 5, 6] });
   const partwayHtml = renderToStaticMarkup(await partway.home());
-  assert.match(partwayHtml, /6 of 13 seen/);
+  assert.match(partwayHtml, /6 of 13 captions seen/);
   assert.match(partwayHtml, /width:46%/);
   assert.match(partwayHtml, /In progress/);
   assert.doesNotMatch(partwayHtml, /All captions seen/);
+  // The bar is not the only thing saying how far along the study is: a screen
+  // reader reads the same position off the progressbar's own values.
+  assert.match(partwayHtml, /role="progressbar"/);
+  assert.match(partwayHtml, /aria-valuenow="6"/);
+  assert.match(partwayHtml, /aria-valuemax="13"/);
+  assert.match(partwayHtml, /aria-valuetext="6 of 13 captions seen"/);
+  // And the card says what opening it does, instead of only an arrow.
+  assert.match(partwayHtml, /Continue/);
 
   const finished = createStudyScenario({ captionCount: 3, navigated: [1, 2, 3] });
   const finishedHtml = renderToStaticMarkup(await finished.home());
-  assert.match(finishedHtml, /3 of 3 seen/);
+  assert.match(finishedHtml, /3 of 3 captions seen/);
   assert.match(finishedHtml, /All captions seen/);
+  assert.match(finishedHtml, /Finish/);
   assert.doesNotMatch(finishedHtml, /&gt;In progress&lt;|>In progress</);
 
   const untouched = createStudyScenario({ participation: null });
   const untouchedHtml = renderToStaticMarkup(await untouched.home());
   assert.doesNotMatch(untouchedHtml, /seen|In progress/);
+  assert.match(untouchedHtml, /Start/);
 });
 
 test("a failed progress lookup says so instead of silently restarting the study", async (t) => {
@@ -560,6 +579,51 @@ test("the stats screen says how many sittings its numbers cover", () => {
   assert.doesNotMatch(legacy, /Across/);
 });
 
+test("the bottom bar shows the position, draws it, and offers both directions", () => {
+  const { CaptionNavigator } = loadModule("src/components/CaptionNavigator.tsx", {
+    "@/lib/study-caption-order": captionOrderModule,
+  });
+  const position = { position: 7, total: 13 };
+  const floating = renderToStaticMarkup(
+    createElement(CaptionNavigator, {
+      label: captionOrderModule.formatCaptionProgressLabel(position),
+      onNext: () => {},
+      onPrevious: () => {},
+      position,
+    })
+  );
+
+  // Moving between captions is on screen now, not only in a gesture, and each
+  // control says which way it goes rather than just "back".
+  assert.match(floating, /aria-label="Previous caption"/);
+  assert.match(floating, /aria-label="Next caption"/);
+  assert.match(floating, />Back</);
+  assert.match(floating, />Next</);
+  // The readout says what it counts, and a screen reader reads the same
+  // position off the progressbar instead of the bar being decoration.
+  assert.match(floating, /7(?:<!-- -->)? of(?:<!-- -->)? 13/);
+  assert.match(floating, /role="progressbar"/);
+  assert.match(floating, /aria-valuenow="7"/);
+  assert.match(floating, /aria-valuemax="13"/);
+  assert.match(floating, /aria-valuetext="Caption 7 of 13"/);
+  assert.match(floating, /width:54%/);
+  assert.doesNotMatch(floating, /aria-hidden="true"[^>]*>7/);
+
+  // Inside the vote bar the surrounding panel is the surface, so the pill's
+  // own border would read as a second, separate control.
+  const inline = renderToStaticMarkup(
+    createElement(CaptionNavigator, {
+      label: captionOrderModule.formatCaptionProgressLabel(position),
+      onNext: () => {},
+      onPrevious: () => {},
+      position,
+      variant: "inline",
+    })
+  );
+  assert.doesNotMatch(inline, /rounded-full border border-\[var\(--panel-border\)\]/);
+  assert.match(inline, /aria-label="Next caption"/);
+});
+
 function renderVoteFlow(overrides = {}) {
   const flow = loadModule("src/components/CaptionVoteFlow.tsx", {
     "@/app/study/actions": { startStudy: async () => {}, endStudy: async () => {} },
@@ -572,6 +636,9 @@ function renderVoteFlow(overrides = {}) {
     "@/lib/study-caption-order": captionOrderModule,
     "@/lib/caption-votes": loadModule("src/lib/caption-votes.ts"),
     "@/components/CompletedStudy": { CompletedStudy: NullComponent },
+    "./CaptionNavigator": loadModule("src/components/CaptionNavigator.tsx", {
+      "@/lib/study-caption-order": captionOrderModule,
+    }),
     "./SwipeVoteCard": { SwipeVoteCard: NullComponent },
   }).CaptionVoteFlow;
 
@@ -603,6 +670,14 @@ test("a returning participant reads one line and a button that names its caption
   assert.doesNotMatch(resumed, /That&#x27;s all you have to do/);
   assert.doesNotMatch(resumed, />Continue Study</);
 
+  // Shown as well as said: the bar answers "did it remember me?" before the
+  // sentence is read, and carries the same position for a screen reader.
+  assert.match(resumed, /aria-valuetext="6 of 13 captions seen"/);
+  assert.match(resumed, /6(?:<!-- -->)? of(?:<!-- -->)? 13(?:<!-- -->)? captions seen/);
+  assert.match(resumed, /Captions you have already seen will not come back./);
+  // Moving between captions was a gesture nobody had been told about.
+  assert.match(resumed, /Move with the Back and Next buttons below, a swipe, or the arrow\s+keys./);
+
   const lastOne = renderVoteFlow({ remainingCaptionCount: 1, captionNumberOffset: 12 });
   assert.match(lastOne, /Welcome back. 1 caption left./);
   assert.match(lastOne, /Continue from caption (?:<!-- -->)?13/);
@@ -617,7 +692,9 @@ test("a first sitting keeps the instructions and the plain Start Study button", 
   assert.match(first, /Like the captions you find funny/);
   assert.match(first, /That&#x27;s all you have to do/);
   assert.match(first, />Start Study</);
+  assert.match(first, /Move with the Back and Next buttons below/);
   assert.doesNotMatch(first, /Welcome back|Continue from caption/);
+  assert.doesNotMatch(first, /captions seen/);
 });
 
 test("reopening a study with nothing left opens its End Study step", () => {

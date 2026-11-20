@@ -161,8 +161,11 @@ export default async function Home({
           <>
             <header className="mb-6 space-y-2 sm:mb-8">
               <h1 className="text-3xl font-bold sm:text-4xl">Active studies</h1>
+              {/* The list is where a returning participant decides whether
+                  to reopen a study, so it says what reopening one does. */}
               <p className="text-sm text-[var(--muted)] sm:text-base">
-                Choose a study to start rating captions.
+                Choose a study to like the captions you find funny. Each study
+                picks up where you left off.
               </p>
             </header>
             {participationError ? (
@@ -177,6 +180,19 @@ export default async function Home({
                 const hasSeenEveryCaption = Boolean(
                   progress && progress.totalCount > 0 && progress.remainingCount === 0
                 );
+                const isCompleted = isStudyCompleted(participationByStudy.get(study.id));
+                const hasStarted = Boolean(participationByStudy.get(study.id)?.started_at);
+                // What one tap does, written on the card. A bare arrow left
+                // the participant to guess whether opening a study they had
+                // already begun would start it over -- the exact doubt this
+                // whole change exists to remove.
+                const actionLabel = isCompleted
+                  ? "View stats"
+                  : hasSeenEveryCaption
+                    ? "Finish"
+                    : hasStarted
+                      ? "Continue"
+                      : "Start";
                 return (
                 <li key={study.id}>
                   <Link
@@ -189,26 +205,35 @@ export default async function Home({
                         <h2 className="text-lg font-semibold sm:text-xl">
                           Study {study.id}
                         </h2>
-                        {isStudyCompleted(participationByStudy.get(study.id)) ? (
+                        {isCompleted ? (
                           <span className="rounded-full bg-[var(--accent)] px-3 py-1 text-xs font-semibold text-[var(--accent-contrast)]">
                             Completed
                           </span>
                         ) : hasSeenEveryCaption ? (
-                          <span className="text-xs font-semibold text-[var(--accent-strong)]">
+                          <span className="rounded-full border border-[var(--accent-strong)] px-3 py-1 text-xs font-semibold text-[var(--accent-strong)]">
                             All captions seen — finish to save it
                           </span>
-                        ) : participationByStudy.get(study.id)?.started_at ? (
-                          <span className="text-xs font-semibold text-[var(--muted)]">In progress</span>
+                        ) : hasStarted ? (
+                          <span className="rounded-full border border-[var(--panel-border)] px-3 py-1 text-xs font-semibold text-[var(--muted)]">
+                            In progress
+                          </span>
                         ) : null}
                       </div>
                       {hasProgressToShow && progress ? (
-                        <div className="space-y-1.5">
+                        <div
+                          className="space-y-1.5"
+                          role="progressbar"
+                          aria-valuemin={0}
+                          aria-valuemax={progress.totalCount}
+                          aria-valuenow={progress.seenCount}
+                          aria-valuetext={formatStudyProgressLabel(progress)}
+                        >
                           <p className="text-xs font-semibold text-[var(--muted)]">
                             {formatStudyProgressLabel(progress)}
                           </p>
                           <div
                             aria-hidden
-                            className="h-1.5 w-full overflow-hidden rounded-full bg-[var(--surface-muted)]"
+                            className="h-1.5 w-full overflow-hidden rounded-full bg-[var(--progress-track)]"
                           >
                             <div
                               className="h-full rounded-full bg-[var(--accent)]"
@@ -232,10 +257,10 @@ export default async function Home({
                         </dd>
                       </dl>
                     </div>
-                    <ArrowRightIcon
-                      aria-hidden
-                      className="h-5 w-5 shrink-0 text-[var(--accent-strong)]"
-                    />
+                    <span className="flex shrink-0 items-center gap-1.5 whitespace-nowrap text-sm font-semibold text-[var(--accent-strong)]">
+                      {actionLabel}
+                      <ArrowRightIcon aria-hidden className="h-5 w-5 shrink-0" />
+                    </span>
                   </Link>
                 </li>
                 );

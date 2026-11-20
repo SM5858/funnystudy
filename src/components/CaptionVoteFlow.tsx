@@ -16,7 +16,9 @@ import type { StudyParticipation } from "@/lib/study-participation";
 import type { StudyStats } from "@/lib/study-stats";
 import { CompletedStudy } from "@/components/CompletedStudy";
 import {
+  captionProgressPercent,
   captionProgressPosition,
+  formatCaptionProgressAnnouncement,
   formatCaptionProgressLabel,
   STUDY_CAPTION_BATCH_SIZE,
 } from "@/lib/study-caption-order";
@@ -32,6 +34,7 @@ import {
   type VoteInputMethod,
 } from "@/lib/caption-votes";
 
+import { CaptionNavigator } from "./CaptionNavigator";
 import { SwipeVoteCard } from "./SwipeVoteCard";
 
 export type CaptionForVote = {
@@ -46,8 +49,11 @@ export type CaptionForVote = {
 const VOTE_SESSION_STORAGE_KEY = "captionVoteSessionId";
 const DEFAULT_VOTE_BAR_GUTTER_PX = 116;
 const BASE_SCREEN_BOTTOM_PADDING_PX = 24;
-const STANDALONE_PROGRESS_GUTTER_PX = 34;
-const VOTE_BAR_PROGRESS_GUTTER_PX = 22;
+// The bottom bar now carries Back/Next buttons as well as the readout, so it
+// reserves the room those need. Nothing may sit under it: the caption and its
+// image shrink to fit above it instead.
+const STANDALONE_PROGRESS_GUTTER_PX = 76;
+const VOTE_BAR_PROGRESS_GUTTER_PX = 44;
 const TOUCH_NAVIGATION_THRESHOLD_PX = 52;
 const WHEEL_NAVIGATION_THRESHOLD_PX = 32;
 const WHEEL_GESTURE_IDLE_MS = 110;
@@ -402,6 +408,8 @@ export function CaptionVoteFlow({
   studyId?: number | null;
   onPendingChange?: (count: number) => void;
 }) {
+  const captionRegionRef = useRef<HTMLDivElement | null>(null);
+  const wasStartPageVisibleRef = useRef(true);
   const [voteBarGutterPx, setVoteBarGutterPx] = useState(
     DEFAULT_VOTE_BAR_GUTTER_PX
   );
@@ -505,6 +513,18 @@ export function CaptionVoteFlow({
     };
   }, []);
 
+  // Starting the study replaces the button that was focused, which would drop
+  // focus to the document body and leave a keyboard user with nothing to read
+  // or act on. Focus follows the participant into the study instead.
+  useEffect(() => {
+    const wasOnStartPage = wasStartPageVisibleRef.current;
+    wasStartPageVisibleRef.current = isStartPageVisible;
+
+    if (wasOnStartPage && !isStartPageVisible) {
+      captionRegionRef.current?.focus();
+    }
+  }, [isStartPageVisible]);
+
   useEffect(() => {
     const mediaQuery = window.matchMedia("(pointer: coarse)");
 
@@ -590,6 +610,10 @@ export function CaptionVoteFlow({
   const captionProgressLabel =
     current && totalCaptionCount > 0
       ? formatCaptionProgressLabel(captionPosition)
+      : null;
+  const captionProgressAnnouncement =
+    current && totalCaptionCount > 0
+      ? formatCaptionProgressAnnouncement(captionPosition)
       : null;
   const remainingCount = Math.max(
     0,
@@ -1272,6 +1296,17 @@ export function CaptionVoteFlow({
     touchGestureRef.current.active = false;
   }, []);
 
+  // The on-screen Back/Next buttons take the same path a swipe or an arrow key
+  // takes, so telemetry, the end-of-study step and the welcome page all behave
+  // identically however the participant moved.
+  const handleNavigatePrevious = useCallback(() => {
+    navigateToRelativeCaption(-1, "button");
+  }, [navigateToRelativeCaption]);
+
+  const handleNavigateNext = useCallback(() => {
+    navigateToRelativeCaption(1, "button");
+  }, [navigateToRelativeCaption]);
+
   const handleKeyboardNavigation = useCallback(
     (event: KeyboardEvent) => {
       if (
@@ -1591,6 +1626,8 @@ export function CaptionVoteFlow({
           hasStarted={Boolean(participation?.started_at)}
           remainingCount={remainingCount}
           resumeCaptionNumber={seenBeforeThisRun > 0 ? seenBeforeThisRun + 1 : null}
+          seenCount={seenBeforeThisRun}
+          totalCount={totalCaptionCount}
         />
       ) : isShowingCompletionPage ? (
         <StudyEndPage
@@ -1600,7 +1637,20 @@ export function CaptionVoteFlow({
         />
       ) : (
         <>
-          <div className="caption-flip-stage w-full">
+          {/* Arrow keys, a swipe and the Back/Next buttons all change the
+              caption in place. Without this nothing is spoken, so a screen
+              reader user moved through the study blind. */}
+          <p aria-live="polite" aria-atomic="true" className="sr-only">
+            {captionProgressAnnouncement
+              ? `${captionProgressAnnouncement}. ${current.content ?? "Image caption."}`
+              : ""}
+          </p>
+          <div
+            ref={captionRegionRef}
+            tabIndex={-1}
+            aria-label="Study captions"
+            className="caption-flip-stage w-full focus:outline-none"
+          >
             <div
               key={current.id}
               className={`caption-flip-card caption-flip-card--${captionFlipDirection} w-full`}
@@ -1633,7 +1683,10 @@ export function CaptionVoteFlow({
               burstToken={
                 heartBurst.voteKey === currentVoteKey ? heartBurst.token : 0
               }
+              captionPosition={captionPosition}
               captionProgressLabel={captionProgressLabel}
+              onNext={handleNavigateNext}
+              onPrevious={handleNavigatePrevious}
               showHeartFallback={shouldShowVoteBar}
               onHeart={handleHeartVote}
               hasCurrentSavedVote={hasCurrentSavedVote}
@@ -1643,7 +1696,12 @@ export function CaptionVoteFlow({
         </>
       )}
       {shouldShowCaptionProgress && !shouldShowVoteBar && captionProgressLabel ? (
-        <CaptionProgressIndicator label={captionProgressLabel} />
+        <CaptionProgressIndicator
+          label={captionProgressLabel}
+          onNext={handleNavigateNext}
+          onPrevious={handleNavigatePrevious}
+          position={captionPosition}
+        />
       ) : null}
       {isWheelNavigationOverlayVisible ? <WheelNavigationOverlay /> : null}
     </div>
@@ -1656,12 +1714,16 @@ function StudyStartPage({
   hasStarted,
   remainingCount,
   resumeCaptionNumber,
+  seenCount,
+  totalCount,
 }: {
   onStart: () => void;
   pending: boolean;
   hasStarted: boolean;
   remainingCount: number;
   resumeCaptionNumber: number | null;
+  seenCount: number;
+  totalCount: number;
 }) {
   // A returning participant does not need the instructions again; they need to
   // know the study remembers them and how much is left. The button names the
@@ -1695,15 +1757,56 @@ function StudyStartPage({
             </span>
           </h1>
           {isResuming ? (
-            <p
-              id="study-welcome-back"
-              className="text-base leading-8 text-[var(--foreground)]/92 sm:text-lg"
-            >
-              Welcome back.{" "}
-              {remainingCount === 1
-                ? "1 caption left."
-                : `${remainingCount.toLocaleString("en-US")} captions left.`}
-            </p>
+            <>
+              <p
+                id="study-welcome-back"
+                className="text-base leading-8 text-[var(--foreground)]/92 sm:text-lg"
+              >
+                Welcome back.{" "}
+                {remainingCount === 1
+                  ? "1 caption left."
+                  : `${remainingCount.toLocaleString("en-US")} captions left.`}
+              </p>
+              {/* How far along they are, shown rather than described. A
+                  returning participant's first question is whether the study
+                  remembered them, and a bar answers it before the sentence
+                  below is read. */}
+              {totalCount > 0 ? (
+                <div
+                  id="study-resume-progress"
+                  role="progressbar"
+                  aria-valuemin={0}
+                  aria-valuemax={totalCount}
+                  aria-valuenow={seenCount}
+                  aria-valuetext={`${seenCount.toLocaleString(
+                    "en-US"
+                  )} of ${totalCount.toLocaleString("en-US")} captions seen`}
+                  className="space-y-2"
+                >
+                  <p className="text-sm font-semibold text-[var(--foreground)]">
+                    {seenCount.toLocaleString("en-US")} of{" "}
+                    {totalCount.toLocaleString("en-US")} captions seen
+                  </p>
+                  <div
+                    aria-hidden
+                    className="h-2 w-full overflow-hidden rounded-full bg-[var(--progress-track)]"
+                  >
+                    <div
+                      className="h-full rounded-full bg-[var(--accent)]"
+                      style={{
+                        width: `${captionProgressPercent({
+                          position: seenCount,
+                          total: totalCount,
+                        })}%`,
+                      }}
+                    />
+                  </div>
+                </div>
+              ) : null}
+              <p className="text-sm leading-6 text-[var(--muted)] sm:text-base">
+                Captions you have already seen will not come back.
+              </p>
+            </>
           ) : (
             <>
               <p className="text-base leading-8 text-[var(--foreground)]/92 sm:text-lg">
@@ -1718,6 +1821,13 @@ function StudyStartPage({
               </p>
             </>
           )}
+          {/* Until now the only way to move was a gesture nobody had been told
+              about. The buttons are on screen; this says they are there, and
+              names the keyboard equivalent. */}
+          <p className="text-sm leading-6 text-[var(--muted)] sm:text-base">
+            Move with the Back and Next buttons below, a swipe, or the arrow
+            keys.
+          </p>
           <button type="button" onClick={onStart} disabled={pending}
             className="mt-2 rounded-xl bg-[var(--accent)] px-5 py-3 text-base font-semibold text-[var(--accent-contrast)] disabled:cursor-wait disabled:opacity-60">
             {startLabel}
@@ -1917,17 +2027,23 @@ function CaptionActionRow({
 
 function VoteButtonBar({
   burstToken,
+  captionPosition,
   captionProgressLabel,
   hasCurrentSavedVote,
   isPending,
   onHeart,
+  onNext,
+  onPrevious,
   showHeartFallback,
 }: {
   burstToken: number;
+  captionPosition: { position: number; total: number };
   captionProgressLabel: string | null;
   hasCurrentSavedVote: boolean;
   isPending: boolean;
   onHeart: () => void;
+  onNext: () => void;
+  onPrevious: () => void;
   showHeartFallback: boolean;
 }) {
   return (
@@ -1942,11 +2058,15 @@ function VoteButtonBar({
         id="vote-button-bar-inner"
         className="mx-auto w-full max-w-xl px-4 sm:max-w-2xl sm:px-6 lg:max-w-3xl lg:px-0"
       >
-        <div className="pointer-events-auto mx-auto flex w-full max-w-[220px] flex-col items-center gap-2 rounded-[28px] border border-[var(--panel-border)] bg-[var(--vote-panel-surface)] px-4 py-3 shadow-[var(--vote-panel-shadow)] backdrop-blur-xl sm:px-5 sm:py-3.5">
+        <div className="pointer-events-auto mx-auto flex w-full max-w-[320px] flex-col items-center gap-2 rounded-[28px] border border-[var(--panel-border)] bg-[var(--vote-panel-surface)] px-3 py-3 shadow-[var(--vote-panel-shadow)] backdrop-blur-xl sm:px-4 sm:py-3.5">
           {captionProgressLabel ? (
-            <p className="text-sm font-semibold tabular-nums text-[var(--foreground)]/88">
-              {captionProgressLabel}
-            </p>
+            <CaptionNavigator
+              label={captionProgressLabel}
+              onNext={onNext}
+              onPrevious={onPrevious}
+              position={captionPosition}
+              variant="inline"
+            />
           ) : null}
           {showHeartFallback ? (
             <HeartVoteButton
@@ -1964,8 +2084,14 @@ function VoteButtonBar({
 
 function CaptionProgressIndicator({
   label,
+  onNext,
+  onPrevious,
+  position,
 }: {
   label: string;
+  onNext: () => void;
+  onPrevious: () => void;
+  position: { position: number; total: number };
 }) {
   return (
     <div
@@ -1974,13 +2100,13 @@ function CaptionProgressIndicator({
       style={{
         paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 12px)",
       }}
-      aria-hidden
     >
-      <div className="glass-panel rounded-full border border-[var(--panel-border)] bg-[var(--vote-panel-surface)] px-4 py-2 shadow-[var(--vote-panel-shadow)] backdrop-blur-xl">
-        <p className="text-sm font-semibold tabular-nums text-[var(--foreground)]/88">
-          {label}
-        </p>
-      </div>
+      <CaptionNavigator
+        label={label}
+        onNext={onNext}
+        onPrevious={onPrevious}
+        position={position}
+      />
     </div>
   );
 }

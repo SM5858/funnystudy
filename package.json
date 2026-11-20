@@ -16,6 +16,7 @@
     "test:resume": "node --test tests/study-resume.test.mjs",
     "test:settings": "node --test tests/settings.test.mjs",
     "preview:settings": "node tests/fixtures/settings-preview.mjs",
+    "preview:study-ui": "node tests/fixtures/study-ui-preview.mjs",
     "study-email": "node --env-file=.env.local scripts/study-email.mjs",
     "study-sms": "node --env-file=.env.local scripts/study-sms.mjs",
     "study-voice": "node --env-file=.env.local scripts/study-voice.mjs",

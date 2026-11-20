@@ -20,6 +20,7 @@
   --card-surface: rgba(0, 0, 0, 0.6);
   --card-border: rgba(253, 224, 71, 0.2);
   --surface-muted: rgba(0, 0, 0, 0.35);
+  --progress-track: rgba(255, 245, 204, 0.24);
   --pill-bg: rgba(0, 0, 0, 0.7);
   --pill-border: rgba(253, 224, 71, 0.12);
   --menu-surface: rgba(0, 0, 0, 0.9);
@@ -68,6 +69,7 @@
     --card-surface: #ffffff;
     --card-border: rgba(15, 23, 42, 0.08);
     --surface-muted: rgba(15, 23, 42, 0.04);
+    --progress-track: rgba(15, 23, 42, 0.18);
     --pill-bg: rgba(255, 255, 255, 0.9);
     --pill-border: rgba(15, 23, 42, 0.1);
     --menu-surface: rgba(255, 255, 255, 0.95);
@@ -112,6 +114,7 @@
   --card-surface: #ffffff;
   --card-border: rgba(15, 23, 42, 0.08);
   --surface-muted: rgba(15, 23, 42, 0.04);
+  --progress-track: rgba(15, 23, 42, 0.18);
   --pill-bg: rgba(255, 255, 255, 0.9);
   --pill-border: rgba(15, 23, 42, 0.1);
   --menu-surface: rgba(255, 255, 255, 0.95);
@@ -156,6 +159,7 @@
   --card-surface: rgba(0, 0, 0, 0.6);
   --card-border: rgba(253, 224, 71, 0.2);
   --surface-muted: rgba(0, 0, 0, 0.35);
+  --progress-track: rgba(255, 245, 204, 0.24);
   --pill-bg: rgba(0, 0, 0, 0.7);
   --pill-border: rgba(253, 224, 71, 0.12);
   --menu-surface: rgba(0, 0, 0, 0.9);
@@ -837,5 +841,53 @@ button[aria-busy="true"] {
   }
   100% {
     transform: translateX(45%);
+  }
+}
+
+/*
+ * Reduced motion.
+ *
+ * The study's page turn is a full 3D flip and a like sets off a screen-wide
+ * wash, rings and flying particles. For a participant who gets motion sick
+ * that is not decoration, it is a reason to stop. The study still animates --
+ * the caption still turns, the heart still pops -- but the large-area and
+ * parallax motion is dropped when the device asks for less of it.
+ *
+ * This deliberately reverses the earlier decision to ignore
+ * prefers-reduced-motion repository-wide.
+ */
+@media (prefers-reduced-motion: reduce) {
+  .caption-flip-card--forward,
+  .caption-flip-card--backward {
+    animation: captionReducedFade 160ms ease-out both;
+    transform: none;
+  }
+
+  .welcome-scroll-arrow,
+  .welcome-scroll-arrow--trail,
+  .welcome-scroll-arrow-halo {
+    animation: none;
+  }
+
+  .heart-burst-screenwash,
+  .heart-burst-ring,
+  .heart-burst-ring--outer,
+  .heart-burst-shockwave,
+  .heart-burst-particle {
+    display: none;
+  }
+
+  .heart-burst-flash,
+  .heart-burst-flash--secondary {
+    animation-duration: 220ms;
+  }
+}
+
+@keyframes captionReducedFade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
   }
 }

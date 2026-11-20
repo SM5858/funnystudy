@@ -326,13 +326,18 @@ export function medianOf(values: readonly number[]) {
     : Math.round((sorted[middle - 1] + sorted[middle]) / 2);
 }
 
+/**
+ * "6 of 13 captions seen" rather than "6 of 13 seen": the card is read at a
+ * glance, next to dates and a study number, and the old label left the reader
+ * to work out what was being counted.
+ */
 export function formatStudyProgressLabel({
   seenCount,
   totalCount,
 }: Pick<StudyProgress, "seenCount" | "totalCount">) {
   return `${seenCount.toLocaleString("en-US")} of ${totalCount.toLocaleString(
     "en-US"
-  )} seen`;
+  )} captions seen`;
 }
 
 export function studyProgressPercent({

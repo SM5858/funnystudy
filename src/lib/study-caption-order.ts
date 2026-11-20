@@ -37,9 +37,38 @@ export function captionProgressPosition({
   return { position, total };
 }
 
+/**
+ * The readout a sighted participant glances at. "7 of 13" says what "7/13"
+ * only implied: a slash is a ratio, and participants read it as a score.
+ */
 export function formatCaptionProgressLabel(progress: {
   position: number;
   total: number;
 }) {
-  return `${progress.position.toLocaleString("en-US")}/${progress.total.toLocaleString("en-US")}`;
+  return `${progress.position.toLocaleString("en-US")} of ${progress.total.toLocaleString("en-US")}`;
+}
+
+/**
+ * The same position, spoken. A screen reader reads the bare numbers out of
+ * context, so the announcement names what is being counted.
+ */
+export function formatCaptionProgressAnnouncement(progress: {
+  position: number;
+  total: number;
+}) {
+  return `Caption ${formatCaptionProgressLabel(progress)}`;
+}
+
+export function captionProgressPercent({
+  position,
+  total,
+}: {
+  position: number;
+  total: number;
+}) {
+  if (total <= 0) {
+    return 0;
+  }
+
+  return Math.min(100, Math.max(0, Math.round((position / total) * 100)));
 }
