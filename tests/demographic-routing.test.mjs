@@ -578,8 +578,8 @@ test("reopening a completed study shows saved stats without loading captions or 
   assert.match(html, /Study Completed/);
   assert.match(html, /Study Stats/);
   assert.match(html, /33.3%/);
-  assert.match(html, /1,200 ms/);
-  assert.match(html, /2,000 ms/);
+  assert.match(html, /1.2 seconds/);
+  assert.match(html, /2.0 seconds/);
   assert.doesNotMatch(html, /Start Study|Continue Study|End Study|No captions/);
   assert.deepEqual(scenario.captionLoads, []);
 });

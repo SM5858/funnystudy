@@ -39,7 +39,12 @@ const { CaptionVoteFlow } = loadModule("src/components/CaptionVoteFlow.tsx", {
   "@/lib/caption-votes": loadModule("src/lib/caption-votes.ts"),
   "@/components/CompletedStudy": { CompletedStudy: NullComponent },
   "./CaptionNavigator": { CaptionNavigator },
+  "./StudyEndPage": loadModule("src/components/StudyEndPage.tsx"),
   "./SwipeVoteCard": { SwipeVoteCard: NullComponent },
+});
+
+const { CompletedStudy } = loadModule("src/components/CompletedStudy.tsx", {
+  "@/lib/study-stats": loadModule("src/lib/study-stats.ts"),
 });
 
 const startPage = renderToStaticMarkup(createElement(CaptionVoteFlow, {
@@ -51,6 +56,26 @@ const startPage = renderToStaticMarkup(createElement(CaptionVoteFlow, {
   initialParticipation: { profile_id: "p", study_id: 1, started_at: "2026-11-01T12:00:00Z", ended_at: null, completion_stats: null },
   remainingCaptionCount: 7,
   studyId: 1,
+}));
+
+const endPage = renderToStaticMarkup(createElement(CaptionVoteFlow, {
+  captionNumberOffset: 13,
+  captionOrder: [],
+  captions: [],
+  initialNextOffset: null,
+  initialTotalCaptionCount: 13,
+  initialParticipation: { profile_id: "p", study_id: 1, started_at: "2026-11-01T12:00:00Z", ended_at: null, completion_stats: null },
+  remainingCaptionCount: 0,
+  studyId: 1,
+}));
+
+const statsPage = renderToStaticMarkup(createElement(CompletedStudy, {
+  participation: {
+    completion_stats: {
+      likedCount: 11, viewedCount: 22, medianVoteTimeMs: 1344,
+      medianNavigationTimeMs: 2040, sessionCount: 3,
+    },
+  },
 }));
 
 const position = { position: 7, total: 13 };
@@ -83,8 +108,11 @@ const captionFrame = (theme) => frame(theme, captionScreen);
 // One file per screen and theme, so each can be opened at phone size.
 const outDir = process.argv[2] ?? ".study-ui-preview";
 mkdirSync(outDir, { recursive: true });
+const fill = (html) => `<div style="display:flex;flex:1;min-height:0;justify-content:center">${html}</div>`;
 for (const theme of ["dark", "light"]) {
   writeFileSync(`${outDir}/start-${theme}.html`, startFrame(theme));
   writeFileSync(`${outDir}/caption-${theme}.html`, captionFrame(theme));
+  writeFileSync(`${outDir}/end-${theme}.html`, frame(theme, fill(endPage)));
+  writeFileSync(`${outDir}/stats-${theme}.html`, frame(theme, fill(statsPage)));
 }
-console.log(`wrote 4 files to ${outDir}: open start-dark.html, start-light.html, caption-dark.html, caption-light.html`);
+console.log(`wrote 8 files to ${outDir}: start/caption/end/stats x dark/light`);

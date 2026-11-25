@@ -39,6 +39,8 @@ const progressModule = loadModule("src/lib/study-progress.ts", {
   "@/lib/studies": studiesModule,
 });
 
+const studyEndPageModule = loadModule("src/components/StudyEndPage.tsx");
+
 const profileId = "participant-a";
 const otherProfileId = "participant-b";
 const STUDY_ID = 1;
@@ -537,12 +539,32 @@ test("stats parsing keeps a session count and still accepts snapshots saved with
   assert.equal(statsModule.parseStudyStats({ ...withSessions, sessionCount: 1.5 }), null);
 });
 
+test("stat durations are written the way a person would say them", () => {
+  const cases = [
+    [null, "Not recorded"],
+    [40, "Under 0.1 seconds"],
+    [344, "0.3 seconds"],
+    [1344, "1.3 seconds"],
+    [9949, "9.9 seconds"],
+    // Rounded before the unit is chosen, so these do not come out as
+    // "10.0 seconds" and "60 seconds".
+    [9950, "10 seconds"],
+    [59500, "1 minute"],
+    [65400, "1 minute 5 seconds"],
+    [125000, "2 minutes 5 seconds"],
+  ];
+
+  for (const [milliseconds, expected] of cases) {
+    assert.equal(statsModule.formatStudyDuration(milliseconds), expected);
+  }
+});
+
 test("the stats screen says how many sittings its numbers cover", () => {
   const completed = loadModule("src/components/CompletedStudy.tsx", {
     "@/lib/study-stats": statsModule,
   }).CompletedStudy;
   const across = renderToStaticMarkup(
-    completed({
+    createElement(completed, {
       participation: {
         completion_stats: {
           likedCount: 5, viewedCount: 13, medianVoteTimeMs: 2000,
@@ -554,9 +576,16 @@ test("the stats screen says how many sittings its numbers cover", () => {
   assert.match(across, /Across (?:<!-- -->)?2(?:<!-- -->)? sessions/);
   assert.match(across, /Captions seen/);
   assert.match(across, /breaks between sessions are not counted/);
+  // Durations are read by participants, not analysts, and each number is read
+  // out together with the thing it counts.
+  assert.match(across, /2.0 seconds/);
+  assert.doesNotMatch(across, /2,000 ms/);
+  assert.match(across, /<dl/);
+  assert.match(across, /<dt[^>]*>Captions seen<\/dt>/);
+  assert.doesNotMatch(across, /Upvote percentage/);
 
   const single = renderToStaticMarkup(
-    completed({
+    createElement(completed, {
       participation: {
         completion_stats: {
           likedCount: 5, viewedCount: 13, medianVoteTimeMs: 2000,
@@ -568,7 +597,7 @@ test("the stats screen says how many sittings its numbers cover", () => {
   assert.match(single, /Across 1 session/);
 
   const legacy = renderToStaticMarkup(
-    completed({
+    createElement(completed, {
       participation: {
         completion_stats: {
           likedCount: 1, viewedCount: 3, medianVoteTimeMs: 1200, medianNavigationTimeMs: 2000,
@@ -639,6 +668,7 @@ function renderVoteFlow(overrides = {}) {
     "./CaptionNavigator": loadModule("src/components/CaptionNavigator.tsx", {
       "@/lib/study-caption-order": captionOrderModule,
     }),
+    "./StudyEndPage": studyEndPageModule,
     "./SwipeVoteCard": { SwipeVoteCard: NullComponent },
   }).CaptionVoteFlow;
 
@@ -707,4 +737,40 @@ test("reopening a study with nothing left opens its End Study step", () => {
   assert.match(nothingLeft, /You&#x27;ve reached the end!/);
   assert.match(nothingLeft, />End Study</);
   assert.doesNotMatch(nothingLeft, /Welcome back|Continue from caption/);
+});
+
+test("the last step says what it will save and offers a way back", () => {
+  const nothingLeft = renderVoteFlow({
+    captionOrder: [],
+    captions: [],
+    captionNumberOffset: 13,
+    remainingCaptionCount: 0,
+  });
+
+  // How much it is about to record, shown rather than left to be guessed.
+  assert.match(nothingLeft, /All (?:<!-- -->)?13(?:<!-- -->)? captions seen/);
+  assert.match(nothingLeft, /aria-valuetext="All 13 captions seen"/);
+  // Ending is final, and the screen says so before the button is pressed.
+  assert.match(nothingLeft, /Once a study is ended you cannot go back/);
+  // A participant who came back with everything already seen has no caption
+  // behind them in this sitting, so the way back is not offered: a button that
+  // silently does nothing would be worse than none.
+  assert.doesNotMatch(nothingLeft, />Back to captions</);
+
+  // With a caption behind them the way back is a button, not a swipe nobody
+  // had been told about.
+  const midStudy = renderToStaticMarkup(
+    createElement(studyEndPageModule.StudyEndPage, {
+      canGoBack: true,
+      containerRef: { current: null },
+      ending: false,
+      onBack: () => {},
+      onEnd: () => {},
+      pendingCount: 0,
+      totalCaptionCount: 13,
+    })
+  );
+  assert.match(midStudy, />Back to captions</);
+  assert.match(midStudy, />End Study</);
+  assert.match(midStudy, /aria-valuetext="All 13 captions seen"/);
 });

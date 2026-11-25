@@ -1,18 +1,40 @@
-import Link from "next/link";
-import type { StudyParticipation } from "@/lib/study-participation";
-import { parseStudyStats } from "@/lib/study-stats";
+"use client";
 
-export function CompletedStudy({ participation }: { participation: StudyParticipation }) {
+import Link from "next/link";
+import { useEffect, useRef } from "react";
+import type { StudyParticipation } from "@/lib/study-participation";
+import { formatStudyDuration, parseStudyStats } from "@/lib/study-stats";
+
+export function CompletedStudy({
+  focusOnMount = false,
+  participation,
+}: {
+  // Ending the study replaces the button that was focused. Without this the
+  // participant who just pressed End Study is left with focus on the document
+  // body and nothing announcing that their stats arrived.
+  focusOnMount?: boolean;
+  participation: StudyParticipation;
+}) {
+  const statsRef = useRef<HTMLDivElement | null>(null);
   const stats = parseStudyStats(participation.completion_stats);
-  const percentage = stats && stats.viewedCount > 0
-    ? Math.round(stats.likedCount / stats.viewedCount * 1000) / 10
-    : 0;
+  const likedShare =
+    stats && stats.viewedCount > 0
+      ? Math.round((stats.likedCount / stats.viewedCount) * 1000) / 10
+      : 0;
+
+  useEffect(() => {
+    if (focusOnMount) {
+      statsRef.current?.focus();
+    }
+  }, [focusOnMount]);
+
   return (
     <div className="flex h-full min-h-0 w-full max-w-xl flex-1 self-stretch items-stretch sm:max-w-2xl">
       <div className="glass-panel flex h-full min-h-0 w-full flex-1 flex-col overflow-hidden rounded-[28px] border border-[var(--panel-border)] bg-[var(--vote-panel-surface)] p-5 text-left text-[var(--foreground)] shadow-[var(--vote-panel-shadow)] sm:p-7">
         <div
           id="completion-stats-scroll-region"
           data-native-scroll-region="true"
+          ref={statsRef}
           tabIndex={0}
           aria-label="Study stats"
           className="min-h-0 flex-1 overflow-y-auto overscroll-contain pr-1 pb-2 [-webkit-overflow-scrolling:touch] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent-strong)]"
@@ -31,16 +53,21 @@ export function CompletedStudy({ participation }: { participation: StudyParticip
                     : `Across ${stats.sessionCount.toLocaleString("en-US")} sessions`}
                 </p>
               ) : null}
-              <div className="mt-6 grid gap-3 sm:grid-cols-2">
-                <StatCard label="Median time before like" value={formatMilliseconds(stats.medianVoteTimeMs)} />
-                <StatCard label="Median time before next caption" value={formatMilliseconds(stats.medianNavigationTimeMs)} />
-                <StatCard label="Upvote percentage" value={`${percentage}%`} />
-                <StatCard label="Captions liked" value={stats.likedCount.toLocaleString("en-US")} />
+              {/* A definition list, so a screen reader reads each number
+                  together with the thing it counts rather than as a run of
+                  loose headings and figures. Counts come before timings
+                  because they are what a participant came to see. */}
+              <dl className="mt-6 grid gap-3 sm:grid-cols-2">
                 <StatCard label="Captions seen" value={stats.viewedCount.toLocaleString("en-US")} />
-              </div>
+                <StatCard label="Captions you liked" value={stats.likedCount.toLocaleString("en-US")} />
+                <StatCard label="Percent you liked" value={`${likedShare}%`} />
+                <StatCard label="Typical time before a like" value={formatStudyDuration(stats.medianVoteTimeMs)} />
+                <StatCard label="Typical time before moving on" value={formatStudyDuration(stats.medianNavigationTimeMs)} />
+              </dl>
               <p className="mt-4 text-xs leading-5 text-[var(--muted)]">
-                Times are measured only while a caption is on your screen, so
-                breaks between sessions are not counted.
+                &ldquo;Typical&rdquo; is the middle of your times, so one long
+                pause does not move it. Times are measured only while a caption
+                is on your screen, so breaks between sessions are not counted.
               </p>
             </>
           ) : (
@@ -57,15 +84,11 @@ export function CompletedStudy({ participation }: { participation: StudyParticip
   );
 }
 
-function formatMilliseconds(milliseconds: number | null) {
-  return milliseconds === null ? "—" : `${milliseconds.toLocaleString("en-US")} ms`;
-}
-
 function StatCard({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-2xl border border-[var(--panel-border)] bg-[var(--surface-muted)] px-4 py-4 shadow-inner">
-      <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--soft)]">{label}</p>
-      <p className="mt-2 text-2xl font-bold leading-none text-[var(--foreground)] sm:text-[28px]">{value}</p>
+      <dt className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--soft)]">{label}</dt>
+      <dd className="mt-2 text-2xl font-bold leading-none text-[var(--foreground)] sm:text-[28px]">{value}</dd>
     </div>
   );
 }

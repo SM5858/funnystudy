@@ -35,6 +35,7 @@ import {
 } from "@/lib/caption-votes";
 
 import { CaptionNavigator } from "./CaptionNavigator";
+import { StudyEndPage } from "./StudyEndPage";
 import { SwipeVoteCard } from "./SwipeVoteCard";
 
 export type CaptionForVote = {
@@ -409,6 +410,8 @@ export function CaptionVoteFlow({
   onPendingChange?: (count: number) => void;
 }) {
   const captionRegionRef = useRef<HTMLDivElement | null>(null);
+  const endPageRef = useRef<HTMLDivElement | null>(null);
+  const wasAlreadyEndedOnLoadRef = useRef(Boolean(initialParticipation?.ended_at));
   const wasStartPageVisibleRef = useRef(true);
   const [voteBarGutterPx, setVoteBarGutterPx] = useState(
     DEFAULT_VOTE_BAR_GUTTER_PX
@@ -621,6 +624,14 @@ export function CaptionVoteFlow({
       ? remainingCaptionCount
       : totalCaptionCount - seenBeforeThisRun
   );
+  // The last step opens by replacing the caption that had focus, so focus
+  // follows the participant onto it the way it follows them into the study.
+  useEffect(() => {
+    if (isShowingCompletionPage && !participation?.ended_at) {
+      endPageRef.current?.focus();
+    }
+  }, [isShowingCompletionPage, participation?.ended_at]);
+
   const shouldShowCaptionProgress =
     Boolean(captionProgressLabel) &&
     !isStartPageVisible &&
@@ -1618,7 +1629,10 @@ export function CaptionVoteFlow({
         </p>
       ) : null}
       {participation?.ended_at ? (
-        <CompletedStudy participation={participation} />
+        <CompletedStudy
+          focusOnMount={!wasAlreadyEndedOnLoadRef.current}
+          participation={participation}
+        />
       ) : isStartPageVisible ? (
         <StudyStartPage
           onStart={handleStartStudy}
@@ -1631,9 +1645,13 @@ export function CaptionVoteFlow({
         />
       ) : isShowingCompletionPage ? (
         <StudyEndPage
-          pendingCount={pendingCount}
+          canGoBack={queue.length > 0}
+          containerRef={endPageRef}
+          onBack={handleNavigatePrevious}
           onEnd={handleEndStudy}
+          pendingCount={pendingCount}
           ending={participationPending}
+          totalCaptionCount={totalCaptionCount}
         />
       ) : (
         <>
@@ -1833,30 +1851,6 @@ function StudyStartPage({
             {startLabel}
           </button>
         </div>
-      </div>
-    </div>
-  );
-}
-
-function StudyEndPage({ pendingCount, onEnd, ending }: {
-  pendingCount: number;
-  onEnd: () => void;
-  ending: boolean;
-}) {
-  return (
-    <div className="flex min-h-0 w-full max-w-xl flex-1 items-center sm:max-w-2xl">
-      <div data-native-scroll-region="true" className="glass-panel max-h-full w-full overflow-y-auto overscroll-contain rounded-[28px] border border-[var(--panel-border)] bg-[var(--vote-panel-surface)] p-6 text-center shadow-[var(--vote-panel-shadow)] sm:p-8">
-        <h1 className="text-2xl font-bold sm:text-3xl">You&apos;ve reached the end!</h1>
-        <p className="mt-4 text-sm leading-6 text-[var(--soft)] sm:text-base">
-          End the study to save your completion and see your humor stats.
-        </p>
-        {pendingCount > 0 ? (
-          <p role="status" className="mt-4 text-sm text-[var(--soft)]">Saving your last vote…</p>
-        ) : null}
-        <button type="button" onClick={onEnd} disabled={ending || pendingCount > 0}
-          className="mt-6 w-full rounded-xl bg-[var(--accent)] px-5 py-3 text-sm font-semibold text-[var(--accent-contrast)] disabled:cursor-wait disabled:opacity-60">
-          {ending ? "Ending…" : "End Study"}
-        </button>
       </div>
     </div>
   );
